@@ -51,26 +51,22 @@ function dayLabel(key) {
   return dateLabel(key);
 }
 
+// 알림은 아이폰 캘린더의 '흡연체크' 캘린더(iCloud)가 보낸다. 시간을 바꿀 때는 이 값과 캘린더를 함께 고친다.
+const SCHEDULE = {
+  smoke: { days: [0,1,2,3,4,5,6], times: ['09:00','13:00','17:00','21:00'] },
+  drink: { days: [5,6], times: ['21:00'] },
+};
 function freshState() {
-  return {
-    v: 1, entries: [], lastBackup: null, lastType: 'smoke',
-    schedule: {
-      smoke: { on: true, days: [0,1,2,3,4,5,6], times: ['09:00','13:00','17:00','21:00'] },
-      drink: { on: true, days: [5,6], times: ['21:00'] },
-    },
-  };
+  return { v: 1, entries: [], lastBackup: null, lastType: 'smoke' };
 }
 function load() {
   const base = freshState();
   let s = null;
   try { s = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { s = null; }
   if (!s || typeof s !== 'object') return base;
-  const sch = s.schedule || {};
-  return {
-    ...base, ...s,
-    entries: Array.isArray(s.entries) ? s.entries : [],
-    schedule: normalizeSchedule({ smoke: { ...base.schedule.smoke, ...sch.smoke }, drink: { ...base.schedule.drink, ...sch.drink } }) || base.schedule,
-  };
+  const merged = { ...base, ...s, entries: Array.isArray(s.entries) ? s.entries : [] };
+  delete merged.schedule; // 예전 버전이 저장해 둔 스케줄은 쓰지 않는다
+  return merged;
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); return true; }
@@ -96,9 +92,9 @@ function lastUse(type) {
 
 // 오늘 스케줄 칸마다 기록이 있었는지 본다. 정해진 시각 앞뒤 60분 안의 기록 하나가 한 칸을 채운다.
 function slotStatus(type, key, now) {
-  const s = state.schedule[type];
+  const s = SCHEDULE[type];
   const d = parseStr(key);
-  if (!s.on || !s.days.includes(d.getDay())) return [];
+  if (!s.days.includes(d.getDay())) return [];
   const times = state.entries.filter(e => e.type === type && e.at.startsWith(key)).map(e => parseStr(e.at).getTime());
   const used = new Set();
   return s.times.slice().sort().map(t => {
@@ -117,8 +113,8 @@ function nextCheck() {
     const key = dayOf(d);
     let best = null;
     for (const type of ['smoke', 'drink']) {
-      const s = state.schedule[type];
-      if (!s.on || !s.days.includes(d.getDay())) continue;
+      const s = SCHEDULE[type];
+      if (!s.days.includes(d.getDay())) continue;
       for (const t of s.times) {
         if (parseStr(key + ' ' + t) <= now) continue;
         if (!best || t < best.t) best = { type, t };
@@ -329,39 +325,22 @@ function renderLog() {
 /* ---------- 알림 화면 ---------- */
 function renderAlarm() {
   const nx = nextCheck();
+  const dayText = days => days.length === 7 ? '매일' : [1, 2, 3, 4, 5, 6, 0].filter(d => days.includes(d)).map(d => WD[d]).join('·');
   $('#view-alarm').innerHTML = `<h1>알림 스케줄</h1>
-    <p class="muted" style="margin-top:-4px">${nx ? `다음 체크 · <b style="color:var(--ink)">${esc(nx.when)} ${TYPES[nx.type].noun}</b>` : '켜져 있는 체크 시간이 없어요'}</p>
+    <p class="muted" style="margin-top:-4px">${nx ? `다음 체크 · <b style="color:var(--ink)">${esc(nx.when)} ${TYPES[nx.type].noun}</b>` : '정해진 체크 시간이 없어요'}</p>
     ${['smoke', 'drink'].map(type => {
-      const s = state.schedule[type];
-      const times = s.times.slice().sort();
-      return `<div class="card sch-${type}">
-        <div class="row"><b class="t-${type}" style="font-size:17px">${TYPES[type].noun}</b>
-          <label class="switch" aria-label="${TYPES[type].noun} 켜기"><input type="checkbox" data-act="sch-on" data-type="${type}" ${s.on ? 'checked' : ''}><span></span></label></div>
-        <div class="sub">요일</div>
-        <div class="days">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button class="chip" data-act="sch-day" data-type="${type}" data-v="${d}" aria-pressed="${s.days.includes(d)}">${WD[d]}</button>`).join('')}</div>
-        <div class="sub">시간</div>
-        <div class="chips">${times.length ? times.map(t => `<span class="chip time">${t}<button data-act="sch-del" data-type="${type}" data-v="${t}" aria-label="${t} 지우기">×</button></span>`).join('') : '<span class="muted small">시간을 추가해 주세요</span>'}</div>
-        <div class="addtime"><input type="time" id="add-${type}" value="${type === 'smoke' ? '15:00' : '20:00'}" aria-label="추가할 시간"><button data-act="sch-add" data-type="${type}">시간 추가</button></div>
+      const s = SCHEDULE[type];
+      return `<div class="card">
+        <div class="row"><b class="t-${type}" style="font-size:17px">${TYPES[type].noun}</b><span class="muted small">${dayText(s.days)}</span></div>
+        <div class="chips" style="margin-top:12px">${s.times.map(t => `<span class="chip">${t}</span>`).join('')}</div>
       </div>`;
     }).join('')}
     <div class="card">
-      <b>아이폰 알림으로 받기</b>
-      <p class="muted small">홈 화면 웹앱은 정해진 시간에 혼자 알림을 띄우지 못해요. 그래서 위 스케줄을 아이폰 캘린더의 반복 일정으로 넣고, 캘린더가 그 시간에 알림을 보내게 해요.</p>
-      <p class="muted small">아이폰은 홈 화면 앱 안에서 캘린더 파일을 열지 못하게 막아요. 그래서 버튼을 누르면 <b>사파리</b>로 넘어가서 캘린더에 넣어요.</p>
-      <button class="primary" data-act="ics-open">사파리에서 캘린더에 넣기</button>
-      <button class="secondary" data-act="ics-copy">링크 복사 (사파리가 안 열릴 때)</button>
-      <p class="muted small">링크를 복사했다면 사파리 주소창에 붙여넣어 열어 주세요.</p>
+      <b>알림은 아이폰 캘린더가 보내요</b>
+      <p class="muted small">위 시간에 아이폰 캘린더의 <b>흡연체크</b> 캘린더가 알림을 보내요. 이 화면은 그 시간표를 보여 주고, 체크 화면에서 기록한 칸(✓)과 놓친 칸을 표시하는 데 써요.</p>
+      <p class="muted small">시간을 바꾸고 싶으면 Claude에게 말해 주세요. 캘린더와 앱을 함께 고쳐요.</p>
     </div>`;
 }
-
-function buildICS() { return CHECKIN_ICS.build(state.schedule); }
-function calendarPageURL() {
-  const url = new URL('calendar.html', location.href);
-  url.search = '';
-  url.hash = 's=' + CHECKIN_ICS.encode(state.schedule);
-  return url.href;
-}
-const isStandalone = () => window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 
 /* ---------- 가져오기 · 백업 ---------- */
 // 단축어 CSV: 한 기록이 "YYYY-MM-DD HH:MM," 으로 시작하고, 메모 안의 줄바꿈은 따옴표 없이 다음 줄로 이어진다.
@@ -404,16 +383,6 @@ function normalizeEntry(e) {
   };
   if (e.type === 'drink') out.want = str(e.want, 60);
   return out;
-}
-function normalizeSchedule(s) {
-  const one = o => (o && typeof o === 'object') ? {
-    on: !!o.on,
-    days: [...new Set((Array.isArray(o.days) ? o.days : []).map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))],
-    times: [...new Set((Array.isArray(o.times) ? o.times : []).filter(t => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)))].slice(0, 24),
-  } : null;
-  if (!s || typeof s !== 'object') return null;
-  const smoke = one(s.smoke), drink = one(s.drink);
-  return smoke && drink ? { smoke, drink } : null;
 }
 const dedupeKey = e => [e.type, e.at, e.craving, e.amount, e.status].join('|');
 function mergeEntries(list) {
@@ -526,8 +495,6 @@ async function restoreJSON(file) {
     const data = JSON.parse(await file.text());
     if (!data || data.app !== 'checkin' || !Array.isArray(data.entries)) throw new Error('bad');
     const m = mergeEntries(data.entries.filter(e => e && (e.type === 'smoke' || e.type === 'drink') && typeof e.at === 'string'));
-    const sch = normalizeSchedule(data.schedule);
-    if (sch) state.schedule = sch;
     save();
     toast(`${m.added}건을 되살렸어요`);
     render();
@@ -581,46 +548,6 @@ document.addEventListener('click', ev => {
       break;
     case 'edit': startEdit(b.dataset.id); break;
     case 'filter': logFilter = v; renderLog(); break;
-    case 'sch-day': {
-      const s = state.schedule[type], d = +v;
-      s.days = s.days.includes(d) ? s.days.filter(x => x !== d) : s.days.concat(d);
-      save(); renderAlarm(); break;
-    }
-    case 'sch-del': {
-      const s = state.schedule[type];
-      s.times = s.times.filter(t => t !== v);
-      save(); renderAlarm(); break;
-    }
-    case 'sch-add': {
-      const inp = $('#add-' + type);
-      const t = inp && inp.value;
-      if (!/^\d{2}:\d{2}$/.test(t || '')) { toast('시간을 골라 주세요'); break; }
-      const s = state.schedule[type];
-      if (s.times.includes(t)) { toast('이미 있는 시간이에요'); break; }
-      s.times = s.times.concat(t).sort();
-      save(); renderAlarm(); toast(`${t} 추가했어요`); break;
-    }
-    case 'ics-open': {
-      if (!buildICS().n) { toast('켜져 있는 체크 시간이 없어요'); break; }
-      const url = calendarPageURL();
-      if (isStandalone()) {
-        // 홈 화면 앱 → 사파리 앱으로 넘긴다 (iOS 17 이상의 x-safari-https 주소).
-        toast("사파리가 열리지 않으면 '링크 복사'를 눌러 주세요");
-        location.href = 'x-safari-' + url;
-      } else {
-        location.href = url;
-      }
-      break;
-    }
-    case 'ics-copy': {
-      if (!buildICS().n) { toast('켜져 있는 체크 시간이 없어요'); break; }
-      const url = calendarPageURL();
-      const fallback = () => window.prompt('이 링크를 복사해서 사파리 주소창에 붙여넣어 주세요', url);
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(() => toast('링크를 복사했어요. 사파리 주소창에 붙여넣어 주세요'), fallback);
-      } else fallback();
-      break;
-    }
     case 'exp-csv': {
       if (!state.entries.some(e => e.type === type)) { toast(`${TYPES[type].label} 기록이 없어요`); break; }
       offerFile(type === 'smoke' ? 'smoke-log.csv' : 'drink-log.csv', toShortcutCSV(type), 'text/csv').then(ok => {
@@ -629,7 +556,7 @@ document.addEventListener('click', ev => {
       break;
     }
     case 'exp-json': {
-      const data = { app: 'checkin', v: 1, exportedAt: new Date().toISOString(), schedule: state.schedule, entries: state.entries };
+      const data = { app: 'checkin', v: 1, exportedAt: new Date().toISOString(), entries: state.entries };
       offerFile(`checkin-backup-${dayOf(new Date())}.json`, JSON.stringify(data, null, 1), 'application/json').then(ok => {
         if (ok) { state.lastBackup = new Date().toISOString(); save(); renderMore(); }
       });
@@ -645,7 +572,6 @@ document.addEventListener('click', ev => {
 document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'at') { form.at = t.value ? t.value.replace('T', ' ').slice(0, 16) : null; renderForm(); }
-  if (t.dataset && t.dataset.act === 'sch-on') { state.schedule[t.dataset.type].on = t.checked; save(); renderAlarm(); }
   if (t.id === 'imp-csv' && t.files && t.files.length) importCSVFiles(Array.from(t.files));
   if (t.id === 'imp-json' && t.files && t.files[0]) restoreJSON(t.files[0]);
 });
