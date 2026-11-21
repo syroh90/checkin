@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="icon-192.png">
+<title>체크인 알림 넣기</title>
+<style>
+:root{--bg:#f5f3ee;--card:#fff;--ink:#1d1b20;--muted:#6b6770;--line:#e6e2da;--chip:#f0ede7;--smoke:#b85e17;--drink:#8a3fa0;--accent:#b85e17;--on-accent:#fff;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#131216;--card:#1d1b21;--ink:#f2eff5;--muted:#a39ea9;--line:#2d2a32;--chip:#27242c;--smoke:#f0a35c;--drink:#c995dc;--accent:#f0a35c;--on-accent:#1a1418;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#131216;--card:#1d1b21;--ink:#f2eff5;--muted:#a39ea9;--line:#2d2a32;--chip:#27242c;--smoke:#f0a35c;--drink:#c995dc;--accent:#f0a35c;--on-accent:#1a1418;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",system-ui,sans-serif;word-break:keep-all;overflow-wrap:anywhere;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:520px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:24px;margin:8px 0 6px;letter-spacing:-.02em}
+.muted{color:var(--muted)} .small{font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:14px 0}
+.row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.t-smoke{color:var(--smoke);font-weight:700} .t-drink{color:var(--drink);font-weight:700}
+.times{font-variant-numeric:tabular-nums;text-align:right}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:54px;border-radius:14px;font-weight:700;font-size:17px;text-decoration:none;margin-top:10px;border:0;font-family:inherit}
+.primary{background:var(--accent);color:var(--on-accent)}
+.secondary{background:var(--card);color:var(--ink);border:1px solid var(--line);font-weight:600;font-size:16px}
+ol{padding-left:20px;margin:8px 0} li{margin:4px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>캘린더에 알림 넣기</h1>
+  <p class="muted small">체크인 앱에서 정한 시간에 아이폰 캘린더가 알림을 보내 줘요.</p>
+  <div id="box"></div>
+</main>
+<script src="ics.js"></script>
+<script src="calendar.js"></script>
+</body>
+</html>

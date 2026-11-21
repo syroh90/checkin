@@ -346,47 +346,22 @@ function renderAlarm() {
     }).join('')}
     <div class="card">
       <b>아이폰 알림으로 받기</b>
-      <p class="muted small">홈 화면 웹앱은 정해진 시간에 혼자 알림을 띄우지 못해요. 그래서 위 스케줄을 아이폰 캘린더의 반복 일정으로 넣고, 캘린더가 그 시간에 알림을 보내게 해요. 알림이 오면 이 앱을 열어 기록하면 돼요.</p>
-      <button class="primary" data-act="ics-open">캘린더에 알림 넣기</button>
-      <button class="secondary" data-act="ics-share">파일로 받기 (위 버튼이 안 될 때)</button>
-      <p class="muted small">스케줄을 바꾼 뒤에는 캘린더에서 예전 <b>[체크인]</b> 일정을 지우고 다시 넣어 주세요. 반복 일정을 지울 때 '이후 모든 이벤트 삭제'를 고르면 한 번에 지워져요.</p>
+      <p class="muted small">홈 화면 웹앱은 정해진 시간에 혼자 알림을 띄우지 못해요. 그래서 위 스케줄을 아이폰 캘린더의 반복 일정으로 넣고, 캘린더가 그 시간에 알림을 보내게 해요.</p>
+      <p class="muted small">아이폰은 홈 화면 앱 안에서 캘린더 파일을 열지 못하게 막아요. 그래서 버튼을 누르면 <b>사파리</b>로 넘어가서 캘린더에 넣어요.</p>
+      <button class="primary" data-act="ics-open">사파리에서 캘린더에 넣기</button>
+      <button class="secondary" data-act="ics-copy">링크 복사 (사파리가 안 열릴 때)</button>
+      <p class="muted small">링크를 복사했다면 사파리 주소창에 붙여넣어 열어 주세요.</p>
     </div>`;
 }
 
-function firstMatchingDay(days) {
-  const now = new Date();
-  for (let i = 0; i < 7; i++) { const d = addDays(now, i); if (days.includes(d.getDay())) return d; }
-  return now;
+function buildICS() { return CHECKIN_ICS.build(state.schedule); }
+function calendarPageURL() {
+  const url = new URL('calendar.html', location.href);
+  url.search = '';
+  url.hash = 's=' + CHECKIN_ICS.encode(state.schedule);
+  return url.href;
 }
-function buildICS() {
-  const map = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//checkin//KO', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:체크인'];
-  let n = 0;
-  for (const type of ['smoke', 'drink']) {
-    const s = state.schedule[type];
-    if (!s.on || !s.days.length || !s.times.length) continue;
-    const byday = s.days.slice().sort().map(d => map[d]).join(',');
-    const start = firstMatchingDay(s.days);
-    const ymd = `${start.getFullYear()}${pad(start.getMonth() + 1)}${pad(start.getDate())}`;
-    for (const t of s.times.slice().sort()) {
-      lines.push('BEGIN:VEVENT',
-        `UID:checkin-${type}-${t.replace(':', '')}@checkin.app`,
-        `DTSTAMP:${stamp}`,
-        `DTSTART:${ymd}T${t.replace(':', '')}00`,
-        'DURATION:PT5M',
-        `RRULE:FREQ=WEEKLY;BYDAY=${byday}`,
-        `SUMMARY:[체크인] ${TYPES[type].noun}`,
-        'DESCRIPTION:홈 화면의 체크인 앱을 열어 기록하세요',
-        'TRANSP:TRANSPARENT',
-        'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${TYPES[type].noun} 시간이에요`, 'TRIGGER:PT0M', 'END:VALARM',
-        'END:VEVENT');
-      n++;
-    }
-  }
-  lines.push('END:VCALENDAR');
-  return { text: lines.join('\r\n') + '\r\n', n };
-}
+const isStandalone = () => window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 
 /* ---------- 가져오기 · 백업 ---------- */
 // 단축어 CSV: 한 기록이 "YYYY-MM-DD HH:MM," 으로 시작하고, 메모 안의 줄바꿈은 따옴표 없이 다음 줄로 이어진다.
@@ -626,16 +601,24 @@ document.addEventListener('click', ev => {
       save(); renderAlarm(); toast(`${t} 추가했어요`); break;
     }
     case 'ics-open': {
-      const { text, n } = buildICS();
-      if (!n) { toast('켜져 있는 체크 시간이 없어요'); break; }
-      const w = window.open('data:text/calendar;charset=utf-8,' + encodeURIComponent(text), '_blank');
-      if (!w) toast("열리지 않으면 '파일로 받기'를 눌러 주세요");
+      if (!buildICS().n) { toast('켜져 있는 체크 시간이 없어요'); break; }
+      const url = calendarPageURL();
+      if (isStandalone()) {
+        // 홈 화면 앱 → 사파리 앱으로 넘긴다 (iOS 17 이상의 x-safari-https 주소).
+        toast("사파리가 열리지 않으면 '링크 복사'를 눌러 주세요");
+        location.href = 'x-safari-' + url;
+      } else {
+        location.href = url;
+      }
       break;
     }
-    case 'ics-share': {
-      const { text, n } = buildICS();
-      if (!n) { toast('켜져 있는 체크 시간이 없어요'); break; }
-      offerFile('checkin-alarms.ics', text, 'text/calendar');
+    case 'ics-copy': {
+      if (!buildICS().n) { toast('켜져 있는 체크 시간이 없어요'); break; }
+      const url = calendarPageURL();
+      const fallback = () => window.prompt('이 링크를 복사해서 사파리 주소창에 붙여넣어 주세요', url);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => toast('링크를 복사했어요. 사파리 주소창에 붙여넣어 주세요'), fallback);
+      } else fallback();
       break;
     }
     case 'exp-csv': {
@@ -671,5 +654,11 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && vi
 
 render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // 새 버전이 설치되면 한 번만 새로고침해서 바로 적용한다 (처음 설치할 때는 새로고침하지 않는다).
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
